@@ -1,0 +1,23 @@
+name = "google-review-tap-card-engine"
+main = "src/index.ts"
+compatibility_date = "2024-09-23"
+compatibility_flags = ["nodejs_compat"]
+
+# Cloudflare KV Namespace Binding
+# To create a KV namespace, run:
+#   npx wrangler kv:namespace create CARD_CACHE
+#   npx wrangler kv:namespace create CARD_CACHE --preview
+# Then paste the generated IDs below:
+[[kv_namespaces]]
+binding = "CARD_CACHE"
+id = "a4b82701494245cd99a049f58ac4ff1f"
+preview_id = "63cfccd44a05430aaa418a3b4bfedb4c"
+
+# Environment Variables (Public/Non-sensitive vars)
+[vars]
+DEFAULT_FALLBACK_URL = "https://google.com"
+
+# Sensitive secrets should be set using:
+#   npx wrangler secret put SUPABASE_URL
+#   npx wrangler secret put SUPABASE_SERVICE_ROLE_KEY
+#   npx wrangler secret put ADMIN_API_KEY # Optional auth protection for admin endpoints

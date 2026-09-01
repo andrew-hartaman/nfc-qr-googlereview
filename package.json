@@ -1,0 +1,31 @@
+{
+  "name": "google-review-tap-card-engine",
+  "version": "2.0.0",
+  "description": "High-performance Dynamic Review Card Engine for NFC/QR Google Reviews using Hono and Cloudflare Workers",
+  "main": "src/index.ts",
+  "scripts": {
+    "dev": "wrangler dev",
+    "deploy": "wrangler deploy --minify",
+    "typecheck": "tsc --noEmit",
+    "cf-typegen": "wrangler types --env-interface CloudflareBindings"
+  },
+  "keywords": [
+    "hono",
+    "cloudflare-workers",
+    "cloudflare-kv",
+    "supabase",
+    "nfc-cards",
+    "google-reviews"
+  ],
+  "author": "",
+  "license": "MIT",
+  "dependencies": {
+    "@supabase/supabase-js": "^2.49.1",
+    "hono": "^4.7.2"
+  },
+  "devDependencies": {
+    "@cloudflare/workers-types": "^4.20250224.0",
+    "typescript": "^5.7.3",
+    "wrangler": "^3.111.0"
+  }
+}

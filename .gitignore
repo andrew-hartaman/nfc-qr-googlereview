@@ -1,0 +1,16 @@
+# Dependencies
+node_modules/
+
+# Local Environment Variables (Rahasia!)
+.dev.vars
+.env
+.env.*
+
+# Build & Cloudflare outputs
+.wrangler/
+dist/
+build/
+
+# Logs
+*.log
+npm-debug.log*
