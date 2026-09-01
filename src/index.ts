@@ -19,10 +19,11 @@ app.get('/', (c) => {
     status: 'online',
     runtime: 'Cloudflare Workers / Edge',
     docs: {
+      admin_ui: 'GET /admin',
       redirect: 'GET /r/:short_code',
-      admin_update: 'PATCH /api/cards/:id',
+      admin_update: 'PATCH /api/cards/:short_code',
       admin_create: 'POST /api/cards',
-      admin_analytics: 'GET /api/cards/:id/analytics',
+      admin_analytics: 'GET /api/cards/:short_code/analytics',
     },
   });
 });

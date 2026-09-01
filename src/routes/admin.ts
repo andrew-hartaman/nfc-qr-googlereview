@@ -2,8 +2,17 @@ import { Hono } from 'hono';
 import type { Bindings, CreateCardInput, UpdateCardInput, ApiResponse, Card } from '../types';
 import { getSupabaseClient } from '../lib/supabase';
 import { deleteCardCache, setCardCache } from '../lib/cache';
+import { renderAdminHtml } from '../views/adminHtml';
 
 export const adminRouter = new Hono<{ Bindings: Bindings }>();
+
+/**
+ * GET /admin
+ * Serves the HTML admin form interface for NFC/QR card management
+ */
+adminRouter.get('/admin', (c) => {
+  return c.html(renderAdminHtml());
+});
 
 /**
  * Optional Admin Authentication Middleware.

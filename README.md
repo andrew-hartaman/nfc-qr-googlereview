@@ -92,7 +92,14 @@ Worker akan berjalan di `http://localhost:8787`.
 
 ## 📡 Dokumentasi Endpoint API
 
-### 1. Edge Redirection (NFC / QR Tap)
+### 1. Web Admin Dashboard (UI Form)
+```http
+GET /admin
+```
+- **Deskripsi**: Tampilan antarmuka berbasis web modern (HTML/CSS/JS) untuk membuat atau memperbarui pemetaan kartu secara langsung dari browser dengan dukungan input `short_code`, `target_url`, dan `x-api-key`.
+- **Response**: `Content-Type: text/html`
+
+### 2. Edge Redirection (NFC / QR Tap)
 ```http
 GET /r/:short_code
 ```
@@ -100,9 +107,9 @@ GET /r/:short_code
 - **Contoh URL**: `http://localhost:8787/r/k-001`
 - **Response**: HTTP 302 Redirect ke `target_url` milik kartu.
 
-### 2. Update Target URL & Invalidate Cache (Admin)
+### 3. Update Target URL & Invalidate Cache (Admin)
 ```http
-PATCH /api/cards/:id
+PATCH /api/cards/:short_code
 Content-Type: application/json
 x-api-key: your_optional_secret_api_key
 
@@ -112,7 +119,7 @@ x-api-key: your_optional_secret_api_key
 }
 ```
 
-### 3. Create Card Baru
+### 4. Create Card Baru
 ```http
 POST /api/cards
 Content-Type: application/json
@@ -125,14 +132,14 @@ x-api-key: your_optional_secret_api_key
 }
 ```
 
-### 4. List Semua Kartu
+### 5. List Semua Kartu
 ```http
 GET /api/cards?page=1&limit=20
 ```
 
-### 5. Lihat Analitik Tap Kartu
+### 6. Lihat Analitik Tap Kartu
 ```http
-GET /api/cards/:id/analytics
+GET /api/cards/:short_code/analytics
 ```
 
 ---
