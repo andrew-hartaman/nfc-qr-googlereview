@@ -738,15 +738,18 @@ export function renderAdminHtml(): string {
       <div class="result-title" style="margin-bottom:12px;">📦 Bulk Generate QR Cards (ZIP / PDF)</div>
       <p style="font-size:0.85rem; color:var(--text-muted); margin-bottom:16px;">Buat ratusan kartu sekaligus dan export QR code-nya secara instan.</p>
       
-      <div style="display:flex; gap:12px; justify-content:center; align-items:center; margin-bottom: 16px;">
-        <input type="number" id="bulkCount" min="1" max="500" value="50" style="width:100px; text-align:center; padding:10px; border-radius:8px; border:1px solid var(--surface-border); background:rgba(15,23,42,0.8); color:#fff;" placeholder="Jumlah">
-        <input type="text" id="bulkLabel" style="width:150px; padding:10px; border-radius:8px; border:1px solid var(--surface-border); background:rgba(15,23,42,0.8); color:#fff;" placeholder="Label (Opsional)">
+      <div style="display:flex; gap:12px; justify-content:center; align-items:center; margin-bottom: 8px;">
+        <input type="number" id="bulkCount" min="1" max="500" value="50" style="width:90px; text-align:center; padding:10px; border-radius:8px; border:1px solid var(--surface-border); background:rgba(15,23,42,0.8); color:#fff;" placeholder="Jumlah">
+        <input type="text" id="bulkLabel" style="width:190px; padding:10px; border-radius:8px; border:1px solid var(--surface-border); background:rgba(15,23,42,0.8); color:#fff;" placeholder="Teks Bebas (Opsional)">
         <button type="button" class="action-btn" id="bulkZipBtn" style="background:rgba(56,189,248,0.1); border-color:var(--primary); color:var(--primary);">
           ⬇️ Export ZIP
         </button>
         <button type="button" class="action-btn" id="bulkPdfBtn" style="background:rgba(52,211,153,0.1); border-color:var(--success); color:var(--success);">
           🖨️ Cetak PDF
         </button>
+      </div>
+      <div id="bulkLabelPreview" style="font-size:0.8rem; color:var(--text-muted); margin-bottom:14px; text-align:center;">
+        Preview Format: <code id="labelPreviewText" style="color:var(--primary); background:rgba(56,189,248,0.1); padding:2px 8px; border-radius:4px; font-family:monospace;">K-000001-</code>
       </div>
       <div id="bulkProgress" style="display:none; font-size:0.85rem; color:var(--primary); font-weight:600; margin-top:12px; text-align:center;">
         Memproses: 0%
@@ -774,6 +777,7 @@ export function renderAdminHtml(): string {
       var currentMode = 'LIST';
       var allCards = [];
       var currentFilter = 'all'; // all | active | unassigned
+      var currentEditingCard = null;
 
       // DOM Elements
       var btnTabList = document.getElementById('btn-tab-list');
@@ -840,6 +844,7 @@ export function renderAdminHtml(): string {
         sectionList.style.display = 'none';
         sectionForm.style.display = 'none';
         sectionBatch.style.display = 'none';
+        if (mode !== 'UPDATE') currentEditingCard = null;
 
         if (mode === 'LIST') {
           btnTabList.className = 'tab-btn active';
@@ -847,6 +852,8 @@ export function renderAdminHtml(): string {
           if (allCards.length === 0) {
             currentPage = 1;
             fetchAllCards(false);
+          } else {
+            renderCardList(false);
           }
         } else if (mode === 'CREATE') {
           btnTabCreate.className = 'tab-btn active';
@@ -870,6 +877,7 @@ export function renderAdminHtml(): string {
         } else if (mode === 'BATCH') {
           btnTabBatch.className = 'tab-btn active';
           sectionBatch.style.display = 'block';
+          if (typeof updateBulkLabelPreview === 'function') updateBulkLabelPreview();
         }
       }
 
@@ -1005,6 +1013,7 @@ export function renderAdminHtml(): string {
       }
 
       function openCardEditor(card) {
+        currentEditingCard = card;
         selectTab('UPDATE');
         
         shortCodeInput.value = card.short_code;
@@ -1105,8 +1114,18 @@ export function renderAdminHtml(): string {
         alertBox.style.display = 'none';
       }
 
+      function escapeXml(str) {
+        if (!str) return '';
+        return String(str)
+          .replace(/&/g, '&amp;')
+          .replace(/</g, '&lt;')
+          .replace(/>/g, '&gt;')
+          .replace(/"/g, '&quot;')
+          .replace(/'/g, '&apos;');
+      }
+
       // ── QR Code Generator (using qrcode-generator CDN) ──
-      function generateQRCodeSVG(text, size) {
+      function generateQRCodeSVG(text, size, label) {
         if (typeof qrcode === 'undefined') {
           console.error("QR Code library not loaded");
           return '';
@@ -1120,7 +1139,7 @@ export function renderAdminHtml(): string {
         var cellSize = Math.max(1, Math.floor(size / (moduleCount + 8))); // +8 for quiet zone
         var margin = 4;
         var offset = margin * cellSize;
-        var svgSize = (moduleCount * cellSize) + (offset * 2);
+        var qrWidth = (moduleCount * cellSize) + (offset * 2);
         
         var rects = '';
         for (var row = 0; row < moduleCount; row++) {
@@ -1131,9 +1150,23 @@ export function renderAdminHtml(): string {
           }
         }
 
-        return '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ' + svgSize + ' ' + svgSize + '" width="' + size + '" height="' + size + '">' +
+        var textSvg = '';
+        var extraHeight = 0;
+
+        if (label) {
+          extraHeight = Math.round(cellSize * 3.8);
+          var fontSize = Math.max(12, Math.round(cellSize * 1.3));
+          var y = qrWidth + Math.round(cellSize * 2.3);
+          textSvg = '<text x="' + (qrWidth / 2) + '" y="' + y + '" text-anchor="middle" font-family="monospace, -apple-system, sans-serif" font-size="' + fontSize + '" font-weight="bold" fill="#64748b" letter-spacing="0.8">' + escapeXml(label) + '</text>';
+        }
+
+        var totalHeight = qrWidth + extraHeight;
+        var scaledHeight = Math.round(size * (totalHeight / qrWidth));
+
+        return '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ' + qrWidth + ' ' + totalHeight + '" width="' + size + '" height="' + scaledHeight + '">' +
           '<rect width="100%" height="100%" fill="#ffffff"/>' +
           rects +
+          textSvg +
           '</svg>';
       }
 
@@ -1251,7 +1284,8 @@ export function renderAdminHtml(): string {
             bodyData.nfc_uid = nfcUid || null;
             bodyData.label = label || null;
 
-            response = await fetch('/api/cards/' + encodeURIComponent(shortCode), {
+            var targetId = (currentEditingCard && currentEditingCard.id) ? currentEditingCard.id : encodeURIComponent(shortCode);
+            response = await fetch('/api/cards/' + targetId, {
               method: 'PATCH',
               headers: headers,
               body: JSON.stringify(bodyData)
@@ -1296,8 +1330,9 @@ export function renderAdminHtml(): string {
              if (idx > -1) {
                 allCards[idx].target_url = finalTargetUrl;
                 allCards[idx].nfc_uid = nfcUid || null;
-                allCards[idx].is_active = isActive;
+                allCards[idx].is_active = (data.data && typeof data.data.is_active === 'boolean') ? data.data.is_active : isActive;
                 allCards[idx].label = label || null;
+                renderCardList(false);
              }
           }
 
@@ -1328,7 +1363,17 @@ export function renderAdminHtml(): string {
       var bulkPdfBtn = document.getElementById('bulkPdfBtn');
       var bulkCountInput = document.getElementById('bulkCount');
       var bulkLabelInput = document.getElementById('bulkLabel');
+      var labelPreviewText = document.getElementById('labelPreviewText');
       var bulkProgress = document.getElementById('bulkProgress');
+
+      function updateBulkLabelPreview() {
+        if (!labelPreviewText || !bulkLabelInput) return;
+        var freeText = (bulkLabelInput.value || '').trim();
+        labelPreviewText.textContent = 'K-000001-' + freeText;
+      }
+      if (bulkLabelInput) {
+        bulkLabelInput.addEventListener('input', updateBulkLabelPreview);
+      }
 
       async function doBulkGenerate(exportType) {
         hideAlert();
@@ -1357,15 +1402,18 @@ export function renderAdminHtml(): string {
           var data = await res.json().catch(function(){});
           if (!res.ok || !data.success) throw new Error(data?.error || 'Gagal generate kartu');
 
-          var codes = data.data.map(function(c) { return c.short_code; });
+          var cards = data.data || [];
+          if (!cards || cards.length === 0) {
+            throw new Error('Tidak ada kartu yang berhasil dibuat oleh server.');
+          }
           
           if (exportType === 'ZIP') {
-            await exportZip(codes);
-            showAlert('success', '🎉 Berhasil men-generate dan mengunduh ZIP untuk ' + codes.length + ' kartu.');
+            await exportZip(cards);
+            showAlert('success', '🎉 Berhasil men-generate dan mengunduh ZIP untuk ' + cards.length + ' kartu.');
           } else {
             bulkProgress.textContent = 'Menyiapkan Print Preview...';
-            await createPrintWindow(codes);
-            showAlert('success', '🎉 Print Preview PDF untuk ' + codes.length + ' kartu telah dibuka.');
+            await createPrintWindow(cards);
+            showAlert('success', '🎉 Print Preview PDF untuk ' + cards.length + ' kartu telah dibuka.');
           }
         } catch(e) {
           showAlert('error', e.message);
@@ -1376,21 +1424,24 @@ export function renderAdminHtml(): string {
         }
       }
 
-      async function exportZip(codes) {
+      async function exportZip(cards) {
         if (typeof JSZip === 'undefined') {
           throw new Error('JSZip library failed to load.');
         }
         var zip = new JSZip();
         var imgFolder = zip.folder("qr_codes");
         
-        for (var i = 0; i < codes.length; i++) {
-          var code = codes[i];
+        for (var i = 0; i < cards.length; i++) {
+          var item = cards[i];
+          var code = typeof item === 'string' ? item : item.short_code;
+          var label = (typeof item === 'object' && item.label) ? item.label : '';
           var fullUrl = window.location.origin + '/r/' + code;
-          var svg = generateQRCodeSVG(fullUrl, 400);
-          imgFolder.file(code + ".svg", svg);
+          var svg = generateQRCodeSVG(fullUrl, 400, label);
+          var fileName = (label ? label.replace(/[/\\\\?%*:|"<>]/g, '_') : code) + ".svg";
+          imgFolder.file(fileName, svg);
           
           if (i % 20 === 0) {
-             bulkProgress.textContent = 'Membuat ZIP: ' + Math.round((i/codes.length)*100) + '%';
+             bulkProgress.textContent = 'Membuat ZIP: ' + Math.round((i/cards.length)*100) + '%';
              await new Promise(function(resolve) { setTimeout(resolve, 0); });
           }
         }
@@ -1405,28 +1456,62 @@ export function renderAdminHtml(): string {
         document.body.removeChild(a);
       }
 
-      async function createPrintWindow(codes) {
-        var printHtml = '<!DOCTYPE html><html><head><title>Print QR Codes</title><style>' +
-          'body { font-family: sans-serif; margin: 0; padding: 20px; background: #f8fafc; }' +
-          '.grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 20px; }' +
-          '.card { text-align: center; page-break-inside: avoid; background: #fff; border: 1px dashed #ccc; padding: 16px; border-radius: 12px; }' +
-          '.card svg { width: 100%; height: auto; max-width: 150px; }' +
-          '.code { margin-top: 12px; font-size: 15px; font-weight: bold; font-family: monospace; letter-spacing: 1.5px; color: #0f172a; }' +
-          '.hint { text-align: center; margin-bottom: 20px; color: #64748b; }' +
-          '@media print { @page { margin: 1cm; } body { padding: 0; background: #fff; } .hint { display: none; } .card { border: 1px solid #eee; } }' +
-          '</style></head><body><div class="hint">Tekan <strong>Ctrl + P</strong> (atau Cmd + P) untuk menyimpan sebagai PDF atau mencetak.</div><div class="grid">';
-
-        for (var i = 0; i < codes.length; i++) {
-          var code = codes[i];
-          var fullUrl = window.location.origin + '/r/' + code;
-          var svg = generateQRCodeSVG(fullUrl, 150);
-          printHtml += '<div class="card">' + svg + '<div class="code">' + code + '</div></div>';
+      async function createPrintWindow(cards) {
+        if (!cards || cards.length === 0) {
+          throw new Error('Tidak ada kartu untuk dicetak.');
         }
 
-        printHtml += '</div><script>window.onload = function() { setTimeout(function(){ window.print(); }, 500); }</sc' + 'ript></body></html>';
-        
+        var printHtml = '<!DOCTYPE html><html><head><meta charset="utf-8"><title>Print QR Codes</title><style>' +
+          '* { box-sizing: border-box; -webkit-print-color-adjust: exact !important; print-color-adjust: exact !important; }' +
+          'body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; margin: 0; padding: 20px; background: #f8fafc; color: #0f172a; }' +
+          '.no-print { display: flex; justify-content: space-between; align-items: center; background: #fff; padding: 14px 20px; border-radius: 10px; border: 1px solid #cbd5e1; margin-bottom: 20px; box-shadow: 0 2px 4px rgba(0,0,0,0.05); }' +
+          '.no-print-text { font-size: 14px; color: #475569; font-weight: 500; }' +
+          '.print-btn { background: #0284c7; color: #fff; border: none; padding: 10px 20px; border-radius: 8px; font-weight: 600; font-size: 14px; cursor: pointer; }' +
+          '.print-btn:hover { background: #0369a1; }' +
+          '.grid { display: flex; flex-wrap: wrap; gap: 16px; justify-content: flex-start; }' +
+          '.card { width: calc(25% - 12px); text-align: center; background: #fff !important; border: 1px dashed #94a3b8; padding: 16px 8px; border-radius: 12px; page-break-inside: avoid; break-inside: avoid; margin-bottom: 16px; }' +
+          '.card svg { width: 100%; height: auto; max-width: 140px; display: inline-block; }' +
+          '.label-tag { margin-top: 10px; font-size: 13px; font-weight: bold; font-family: monospace; color: #64748b; letter-spacing: 0.8px; }' +
+          '@media print {' +
+          '  @page { margin: 10mm; size: auto; }' +
+          '  body { padding: 0; background: #fff !important; }' +
+          '  .no-print { display: none !important; }' +
+          '  .grid { display: flex !important; flex-wrap: wrap !important; gap: 10px !important; }' +
+          '  .card { width: calc(25% - 8px) !important; border: 1px solid #cbd5e1 !important; margin-bottom: 10px !important; page-break-inside: avoid !important; break-inside: avoid !important; }' +
+          '}' +
+          '</style></head><body>' +
+          '<div class="no-print">' +
+          '  <div class="no-print-text">📄 Total <strong>' + cards.length + ' kartu</strong> siap dicetak. Tekan tombol atau <strong>Ctrl + P</strong>.</div>' +
+          '  <button class="print-btn" onclick="window.print()">🖨️ Cetak / Simpan PDF</button>' +
+          '</div>' +
+          '<div class="grid">';
+
+        for (var i = 0; i < cards.length; i++) {
+          var item = cards[i];
+          var code = typeof item === 'string' ? item : item.short_code;
+          var label = (typeof item === 'object' && item.label) ? item.label : '';
+          var fullUrl = window.location.origin + '/r/' + code;
+          var svg = generateQRCodeSVG(fullUrl, 140);
+          var labelHtml = label ? '<div class="label-tag">' + label + '</div>' : '';
+          printHtml += '<div class="card">' + svg + labelHtml + '</div>';
+        }
+
+        printHtml += '</div>' +
+          '<sc' + 'ript>' +
+          '  function doAutoPrint() {' +
+          '    setTimeout(function() {' +
+          '      window.focus();' +
+          '      window.print();' +
+          '    }, 700);' +
+          '  }' +
+          '  if (document.readyState === "complete") { doAutoPrint(); }' +
+          '  else { window.addEventListener("load", doAutoPrint); }' +
+          '</sc' + 'ript>' +
+          '</body></html>';
+
         var win = window.open('', '_blank');
         if (win) {
+          win.document.open();
           win.document.write(printHtml);
           win.document.close();
         } else {

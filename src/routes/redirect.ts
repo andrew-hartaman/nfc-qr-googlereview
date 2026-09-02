@@ -81,7 +81,7 @@ redirectRouter.get('/r/:short_code', async (c) => {
       const { data: card, error } = await supabase
         .from('cards')
         .select('id, short_code, nfc_uid, target_url, is_active')
-        .eq('short_code', shortCode)
+        .ilike('short_code', shortCode)
         .maybeSingle();
 
       if (error) {

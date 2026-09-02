@@ -78,7 +78,9 @@ CREATE TRIGGER trigger_cards_updated_at
 -- V3 MIGRATION SCRIPT (Run this if upgrading from V2)
 -- ===================================================================
 -- ALTER TABLE cards ADD COLUMN IF NOT EXISTS nfc_uid VARCHAR(100) UNIQUE;
+-- ALTER TABLE cards ADD COLUMN IF NOT EXISTS label VARCHAR(100);
 -- CREATE INDEX IF NOT EXISTS idx_cards_nfc_uid ON cards(nfc_uid);
+-- CREATE INDEX IF NOT EXISTS idx_cards_label_trgm ON cards USING gin (label gin_trgm_ops);
 -- ALTER TABLE tap_logs ADD COLUMN IF NOT EXISTS access_type VARCHAR(10) DEFAULT 'QR';
 -- ALTER TABLE cards ALTER COLUMN target_url DROP NOT NULL, ALTER COLUMN target_url DROP DEFAULT;
 -- ALTER TABLE cards ALTER COLUMN is_active SET DEFAULT FALSE;

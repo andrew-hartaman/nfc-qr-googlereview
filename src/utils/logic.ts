@@ -1,5 +1,5 @@
 export function generateShortCode(): string {
-  const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789';
+  const chars = 'abcdefghijklmnopqrstuvwxyz0123456789';
   let result = '';
   for (let i = 0; i < 8; i++) {
     result += chars.charAt(Math.floor(Math.random() * chars.length));
@@ -70,4 +70,37 @@ export function parsePaginationParams(query: (key: string) => string | undefined
     status,
     search: search && search.length > 0 ? search : null
   };
+}
+
+/**
+ * Formats card label with sequential number and optional free string.
+ * Format: K-XXXXXX-[free string]
+ * If free string is empty/null, outputs K-XXXXXX- (with trailing hyphen).
+ * Pads to minimum 6 digits (000001), dynamically expands if > 6 digits.
+ */
+export function formatCardLabel(sequenceNumber: number, freeString?: string | null): string {
+  const safeSeq = Math.max(1, Math.floor(sequenceNumber || 1));
+  const padded = String(safeSeq).padStart(6, '0');
+  const base = `K-${padded}-`;
+  const suffix = freeString ? freeString.trim() : '';
+  return suffix.length > 0 ? `${base}${suffix}` : base;
+}
+
+/**
+ * Extracts the highest sequence number from a list of card labels.
+ * Handles patterns like 'K-000001-Example', 'K-000045-', 'K-000020'
+ */
+export function extractMaxSequenceFromLabels(labels: (string | null | undefined)[]): number {
+  let maxSeq = 0;
+  for (const label of labels) {
+    if (!label) continue;
+    const match = label.match(/^K-(\d+)/i);
+    if (match && match[1]) {
+      const num = parseInt(match[1], 10);
+      if (!isNaN(num) && num > maxSeq) {
+        maxSeq = num;
+      }
+    }
+  }
+  return maxSeq;
 }

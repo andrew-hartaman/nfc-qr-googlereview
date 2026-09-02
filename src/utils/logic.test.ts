@@ -3,7 +3,9 @@ import {
   generateShortCode, 
   validateBatchCount, 
   determineIsActive, 
-  parsePaginationParams 
+  parsePaginationParams,
+  formatCardLabel,
+  extractMaxSequenceFromLabels
 } from './logic';
 
 describe('logic utils', () => {
@@ -14,9 +16,9 @@ describe('logic utils', () => {
       expect(code.length).toBe(8);
     });
 
-    it('should generate alphanumeric characters only', () => {
+    it('should generate lowercase alphanumeric characters only', () => {
       const code = generateShortCode();
-      expect(/^[a-zA-Z0-9]+$/.test(code)).toBe(true);
+      expect(/^[a-z0-9]+$/.test(code)).toBe(true);
     });
 
     it('should generate unique, non-sequential codes', () => {
@@ -114,7 +116,7 @@ describe('logic utils', () => {
     });
 
     it('should parse valid status', () => {
-      let query = (key: string) => key === 'status' ? 'active' : undefined;
+      let query: (key: string) => string | undefined = (key: string) => key === 'status' ? 'active' : undefined;
       expect(parsePaginationParams(query).status).toBe('active');
 
       query = (key: string) => key === 'status' ? 'unassigned' : undefined;
@@ -125,11 +127,65 @@ describe('logic utils', () => {
     });
 
     it('should parse search correctly', () => {
-      let query = (key: string) => key === 'search' ? '  test code  ' : undefined;
+      let query: (key: string) => string | undefined = (key: string) => key === 'search' ? '  test code  ' : undefined;
       expect(parsePaginationParams(query).search).toBe('test code');
 
       query = (key: string) => key === 'search' ? '   ' : undefined;
       expect(parsePaginationParams(query).search).toBeNull();
     });
   });
+
+  describe('formatCardLabel', () => {
+    it('should format with free string correctly', () => {
+      expect(formatCardLabel(1, 'Example')).toBe('K-000001-Example');
+      expect(formatCardLabel(50, 'Cabang Kemang')).toBe('K-000050-Cabang Kemang');
+    });
+
+    it('should include trailing hyphen when free string is empty or omitted', () => {
+      expect(formatCardLabel(1)).toBe('K-000001-');
+      expect(formatCardLabel(1, '')).toBe('K-000001-');
+      expect(formatCardLabel(1, '   ')).toBe('K-000001-');
+      expect(formatCardLabel(1, null)).toBe('K-000001-');
+      expect(formatCardLabel(1, undefined)).toBe('K-000001-');
+    });
+
+    it('should dynamically expand when sequence exceeds 6 digits without truncation', () => {
+      expect(formatCardLabel(1000000, 'Example')).toBe('K-1000000-Example');
+      expect(formatCardLabel(1000000)).toBe('K-1000000-');
+      expect(formatCardLabel(12345678, 'VIP')).toBe('K-12345678-VIP');
+    });
+
+    it('should handle zero or negative sequence gracefully by defaulting to 1', () => {
+      expect(formatCardLabel(0, 'Example')).toBe('K-000001-Example');
+      expect(formatCardLabel(-5)).toBe('K-000001-');
+    });
+  });
+
+  describe('extractMaxSequenceFromLabels', () => {
+    it('should return 0 for empty array or no matching labels', () => {
+      expect(extractMaxSequenceFromLabels([])).toBe(0);
+      expect(extractMaxSequenceFromLabels(['Custom Label', 'Meja 5', null, undefined])).toBe(0);
+    });
+
+    it('should extract highest sequence from matching labels', () => {
+      const labels = [
+        'K-000001-Example',
+        'K-000050-Cabang',
+        'K-000020-',
+        'K-000012',
+        null,
+        'Other'
+      ];
+      expect(extractMaxSequenceFromLabels(labels)).toBe(50);
+    });
+
+    it('should extract sequences beyond 6 digits correctly', () => {
+      const labels = [
+        'K-000001-Test',
+        'K-1000050-Bulk'
+      ];
+      expect(extractMaxSequenceFromLabels(labels)).toBe(1000050);
+    });
+  });
 });
+
