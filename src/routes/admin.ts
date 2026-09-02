@@ -1,8 +1,14 @@
 import { Hono } from 'hono';
 import type { Bindings, CreateCardInput, UpdateCardInput, ApiResponse, Card } from '../types';
 import { getSupabaseClient } from '../lib/supabase';
-import { deleteCardCache, setCardCache } from '../lib/cache';
+import { deleteCardCache, deleteNfcCache, setCardCache } from '../lib/cache';
 import { renderAdminHtml } from '../views/adminHtml';
+import {
+  generateShortCode,
+  validateBatchCount,
+  determineIsActive,
+  parsePaginationParams
+} from '../utils/logic';
 
 export const adminRouter = new Hono<{ Bindings: Bindings }>();
 
@@ -49,9 +55,9 @@ function isUuidString(str: string): boolean {
 }
 
 /**
- * PATCH /api/cards/:id or /api/cards/:short_code
- * Updates card details (target_url, is_active, etc.) based on short_code.
- * Syncs the updated data directly to Cloudflare KV or invalidates if inactive.
+ * PATCH /api/cards/:identifier
+ * Updates card details (target_url, is_active, nfc_uid, etc.) based on short_code.
+ * V3: Supports nfc_uid field update with KV cache sync for both card: and nfc: keys.
  */
 adminRouter.patch('/api/cards/:identifier', async (c) => {
   const identifier = (c.req.param('identifier') || c.req.param('id') || '').trim();
@@ -72,14 +78,14 @@ adminRouter.patch('/api/cards/:identifier', async (c) => {
     // 1. Fetch current card by short_code (or fallback to UUID id)
     let { data: existingCard, error: fetchError } = await supabase
       .from('cards')
-      .select('id, short_code, target_url, is_active, user_id')
+      .select('id, short_code, nfc_uid, target_url, is_active, user_id')
       .eq('short_code', shortCode)
       .maybeSingle();
 
     if (!existingCard && isUuidString(identifier)) {
       const { data: byId } = await supabase
         .from('cards')
-        .select('id, short_code, target_url, is_active, user_id')
+        .select('id, short_code, nfc_uid, target_url, is_active, user_id')
         .eq('id', identifier)
         .maybeSingle();
       existingCard = byId;
@@ -107,10 +113,26 @@ adminRouter.patch('/api/cards/:identifier', async (c) => {
 
     // 2. Prepare update payload
     const updatePayload: Partial<Card> = {};
-    if (body.target_url !== undefined) updatePayload.target_url = body.target_url;
-    if (body.is_active !== undefined) updatePayload.is_active = body.is_active;
+    if (body.target_url !== undefined) {
+      const url = body.target_url ? body.target_url.trim() : '';
+      updatePayload.target_url = url.length > 0 ? url : null;
+      // Auto-toggle is_active based on target_url presence
+      updatePayload.is_active = determineIsActive(updatePayload.target_url || '');
+    } else if (body.is_active !== undefined) {
+      // Only allow manual toggle if not overriding via target_url update
+      updatePayload.is_active = body.is_active;
+    }
+    
+    if (body.label !== undefined) {
+      const label = body.label ? body.label.trim() : '';
+      updatePayload.label = label.length > 0 ? label : null;
+    }
     if (body.short_code !== undefined) updatePayload.short_code = body.short_code.trim().toLowerCase();
     if (body.user_id !== undefined) updatePayload.user_id = body.user_id;
+    // V3: handle nfc_uid update (allow setting to null to unlink)
+    if (body.nfc_uid !== undefined) {
+      updatePayload.nfc_uid = body.nfc_uid ? body.nfc_uid.trim().toUpperCase() : null;
+    }
 
     // 3. Update database record in Supabase
     const { data: updatedCard, error: updateError } = await supabase
@@ -134,25 +156,33 @@ adminRouter.patch('/api/cards/:identifier', async (c) => {
     if (c.env.CARD_CACHE) {
       const oldShortCode = existingCard.short_code;
       const newShortCode = updatedCard.short_code;
+      const oldNfcUid = existingCard.nfc_uid;
+      const newNfcUid = updatedCard.nfc_uid;
 
       if (updatedCard.is_active === false) {
-        // If card is deactivated, remove from cache immediately
-        await deleteCardCache(c.env.CARD_CACHE, oldShortCode);
+        // If card is deactivated, remove all cache entries
+        await deleteCardCache(c.env.CARD_CACHE, oldShortCode, oldNfcUid);
         if (newShortCode !== oldShortCode) {
-          await deleteCardCache(c.env.CARD_CACHE, newShortCode);
+          await deleteCardCache(c.env.CARD_CACHE, newShortCode, newNfcUid);
         }
       } else {
         // If short_code changed, delete the old cache entry
         if (newShortCode !== oldShortCode) {
-          await deleteCardCache(c.env.CARD_CACHE, oldShortCode);
+          await deleteCardCache(c.env.CARD_CACHE, oldShortCode, oldNfcUid);
         }
 
-        // Sync fresh data into Cloudflare KV with key `card:${newShortCode}`
+        // If NFC UID changed, delete the old NFC cache entry
+        if (oldNfcUid && oldNfcUid !== newNfcUid) {
+          await deleteNfcCache(c.env.CARD_CACHE, oldNfcUid);
+        }
+
+        // Sync fresh data into Cloudflare KV (writes both card: and nfc: keys)
         await setCardCache(c.env.CARD_CACHE, newShortCode, {
           id: updatedCard.id,
           target_url: updatedCard.target_url,
           is_active: updatedCard.is_active,
           short_code: newShortCode,
+          nfc_uid: newNfcUid || undefined,
         });
       }
     }
@@ -169,17 +199,72 @@ adminRouter.patch('/api/cards/:identifier', async (c) => {
 });
 
 /**
+ * POST /api/cards/generate-batch
+ * Tahap A: Bulk generates empty cards with random short_codes
+ */
+adminRouter.post('/api/cards/generate-batch', async (c) => {
+  const body = await c.req.json<{ count?: number, label?: string }>().catch(() => null);
+  const count = validateBatchCount(body?.count);
+  const label = body?.label ? body.label.trim() : null;
+
+  try {
+    const supabase = getSupabaseClient(c.env);
+    const generated = [];
+
+    for (let i = 0; i < count; i++) {
+      let shortCode = '';
+      let isUnique = false;
+      let attempts = 0;
+
+      while (!isUnique && attempts < 3) {
+        shortCode = generateId();
+        const { data } = await supabase.from('cards').select('id').eq('short_code', shortCode).maybeSingle();
+        if (!data) isUnique = true;
+        attempts++;
+      }
+
+      if (!isUnique) continue;
+
+      const { data, error } = await supabase
+        .from('cards')
+        .insert({
+          short_code: shortCode,
+          target_url: null,
+          is_active: false,
+          label: label || null,
+        })
+        .select('id, short_code, is_active, label')
+        .single();
+
+      if (data && !error) {
+        generated.push(data);
+      }
+    }
+
+    return c.json<ApiResponse>({
+      success: true,
+      message: `Successfully generated ${generated.length} cards`,
+      data: generated,
+    }, 201);
+  } catch (err: unknown) {
+    const message = err instanceof Error ? err.message : 'Unknown error';
+    return c.json<ApiResponse>({ success: false, error: message }, 500);
+  }
+});
+
+/**
  * POST /api/cards
  * Creates a new review card.
+ * V3: Accepts optional nfc_uid field. Primes both card: and nfc: KV cache keys.
  */
 adminRouter.post('/api/cards', async (c) => {
   const body = await c.req.json<CreateCardInput>().catch(() => null);
 
-  if (!body || !body.short_code || !body.target_url) {
+  if (!body || !body.short_code) {
     return c.json<ApiResponse>(
       {
         success: false,
-        error: 'short_code and target_url are required fields',
+        error: 'short_code is a required field',
       },
       400
     );
@@ -188,14 +273,17 @@ adminRouter.post('/api/cards', async (c) => {
   try {
     const supabase = getSupabaseClient(c.env);
     const shortCode = body.short_code.trim().toLowerCase();
+    const nfcUid = body.nfc_uid ? body.nfc_uid.trim().toUpperCase() : null;
 
     const { data, error } = await supabase
       .from('cards')
       .insert({
         short_code: shortCode,
-        target_url: body.target_url,
+        nfc_uid: nfcUid,
+        target_url: body.target_url || null,
         user_id: body.user_id || null,
-        is_active: body.is_active ?? true,
+        is_active: body.is_active ?? false,
+        label: body.label ? body.label.trim() : null,
       })
       .select()
       .single();
@@ -210,13 +298,14 @@ adminRouter.post('/api/cards', async (c) => {
       );
     }
 
-    // If active, optionally prime the KV cache
+    // If active, prime the KV cache (writes both card: and nfc: keys if nfc_uid present)
     if (c.env.CARD_CACHE && data.is_active) {
       await setCardCache(c.env.CARD_CACHE, data.short_code, {
         id: data.id,
         target_url: data.target_url,
         is_active: data.is_active,
         short_code: data.short_code,
+        nfc_uid: data.nfc_uid || undefined,
       });
     }
 
@@ -239,15 +328,25 @@ adminRouter.post('/api/cards', async (c) => {
  * List all cards with optional pagination.
  */
 adminRouter.get('/api/cards', async (c) => {
-  const limit = Math.min(parseInt(c.req.query('limit') || '50', 10), 100);
-  const page = Math.max(parseInt(c.req.query('page') || '1', 10), 1);
-  const offset = (page - 1) * limit;
+  const { limit, page, offset, status, search } = parsePaginationParams((key: string) => c.req.query(key));
 
   try {
     const supabase = getSupabaseClient(c.env);
-    const { data, error, count } = await supabase
+    let query = supabase
       .from('cards')
-      .select('*, users(id, name, business_name)', { count: 'exact' })
+      .select('*, users(id, name, business_name)', { count: 'exact' });
+      
+    if (status === 'active') {
+      query = query.is('is_active', true).not('target_url', 'is', null);
+    } else if (status === 'unassigned') {
+      query = query.or('is_active.eq.false,target_url.is.null');
+    }
+
+    if (search) {
+      query = query.or(`short_code.ilike.%${search}%,nfc_uid.ilike.%${search}%,label.ilike.%${search}%`);
+    }
+
+    const { data, error, count } = await query
       .order('created_at', { ascending: false })
       .range(offset, offset + limit - 1);
 
@@ -262,6 +361,7 @@ adminRouter.get('/api/cards', async (c) => {
         page,
         limit,
         total: count,
+        has_more: count ? (offset + limit < count) : false,
       },
     });
   } catch (err: unknown) {
@@ -314,6 +414,7 @@ adminRouter.get('/api/cards/:identifier', async (c) => {
 /**
  * GET /api/cards/:identifier/analytics
  * Retrieve tap statistics and logs for a specific card by short_code or UUID.
+ * V3: Results now include access_type breakdown (QR vs NFC).
  */
 adminRouter.get('/api/cards/:identifier/analytics', async (c) => {
   const identifier = (c.req.param('identifier') || c.req.param('id') || '').trim();
@@ -372,6 +473,13 @@ adminRouter.get('/api/cards/:identifier/analytics', async (c) => {
       return acc;
     }, {});
 
+    // V3: Aggregate by access type (QR vs NFC)
+    const accessBreakdown = logs.reduce<Record<string, number>>((acc, log) => {
+      const accessType = log.access_type || 'QR';
+      acc[accessType] = (acc[accessType] || 0) + 1;
+      return acc;
+    }, {});
+
     return c.json({
       success: true,
       data: {
@@ -379,6 +487,7 @@ adminRouter.get('/api/cards/:identifier/analytics', async (c) => {
         short_code: card.short_code,
         total_taps: totalTaps,
         device_breakdown: deviceBreakdown,
+        access_breakdown: accessBreakdown,
         recent_logs: logs.slice(0, 20),
       },
     });

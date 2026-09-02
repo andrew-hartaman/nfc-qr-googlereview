@@ -15,15 +15,17 @@ app.use('*', prettyJSON());
 app.get('/', (c) => {
   return c.json({
     name: 'Dynamic Review Card Engine',
-    version: '2.0.0',
+    version: '3.0.0',
     status: 'online',
     runtime: 'Cloudflare Workers / Edge',
     docs: {
       admin_ui: 'GET /admin',
-      redirect: 'GET /r/:short_code',
-      admin_update: 'PATCH /api/cards/:short_code',
+      redirect_qr: 'GET /r/:short_code',
+      redirect_nfc: 'GET /nfc/:nfc_uid',
       admin_create: 'POST /api/cards',
-      admin_analytics: 'GET /api/cards/:short_code/analytics',
+      admin_update: 'PATCH /api/cards/:short_code',
+      admin_get: 'GET /api/cards/:identifier',
+      admin_analytics: 'GET /api/cards/:identifier/analytics',
     },
   });
 });
