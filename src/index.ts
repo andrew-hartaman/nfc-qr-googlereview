@@ -11,23 +11,10 @@ const app = new Hono<{ Bindings: Bindings }>();
 app.use('*', cors());
 app.use('*', prettyJSON());
 
-// Health Check & Root Info
+// Root Route: Redirect to fallback URL to hide internal endpoints structure
 app.get('/', (c) => {
-  return c.json({
-    name: 'Dynamic Review Card Engine',
-    version: '3.0.0',
-    status: 'online',
-    runtime: 'Cloudflare Workers / Edge',
-    docs: {
-      admin_ui: 'GET /admin',
-      redirect_qr: 'GET /r/:short_code',
-      redirect_nfc: 'GET /nfc/:nfc_uid',
-      admin_create: 'POST /api/cards',
-      admin_update: 'PATCH /api/cards/:short_code',
-      admin_get: 'GET /api/cards/:identifier',
-      admin_analytics: 'GET /api/cards/:identifier/analytics',
-    },
-  });
+  const fallbackUrl = c.env.DEFAULT_FALLBACK_URL || 'https://google.com';
+  return c.redirect(fallbackUrl, 302);
 });
 
 app.get('/health', (c) => {

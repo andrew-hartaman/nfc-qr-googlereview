@@ -1032,6 +1032,24 @@ export function renderAdminHtml(): string {
         }
 
         updateUrlPreview();
+
+        // Show URL links and QR code immediately so user can view/download without updating first
+        var redirectFullUrl = window.location.origin + '/r/' + card.short_code;
+        resultLink.textContent = redirectFullUrl;
+        resultLink.href = redirectFullUrl;
+        testBtn.href = redirectFullUrl;
+        resultBox.classList.add('show');
+
+        if (card.nfc_uid) {
+          var nfcFullUrl = window.location.origin + '/nfc/' + encodeURIComponent(card.nfc_uid);
+          nfcResultLink.textContent = nfcFullUrl;
+          nfcResultLink.href = nfcFullUrl;
+          nfcResultRow.style.display = 'block';
+        } else {
+          nfcResultRow.style.display = 'none';
+        }
+
+        showQRCode(card.short_code, card.label);
       }
 
       // Initial tab load
@@ -1170,14 +1188,16 @@ export function renderAdminHtml(): string {
           '</svg>';
       }
 
-      // Store last generated SVG for downloads
+      // Store last generated parameters for downloads
       var lastQrSvg = '';
       var lastShortCode = '';
+      var lastCardLabel = '';
 
-      function showQRCode(shortCode) {
+      function showQRCode(shortCode, label) {
         lastShortCode = shortCode;
+        lastCardLabel = label || '';
         var fullUrl = window.location.origin + '/r/' + shortCode;
-        var svgString = generateQRCodeSVG(fullUrl, 200);
+        var svgString = generateQRCodeSVG(fullUrl, 200, lastCardLabel);
         lastQrSvg = svgString;
         qrCanvas.innerHTML = svgString;
         qrSection.classList.add('show');
@@ -1185,12 +1205,15 @@ export function renderAdminHtml(): string {
 
       // Download SVG
       downloadSvgBtn.onclick = function() {
-        if (!lastQrSvg) return;
-        var blob = new Blob([lastQrSvg], { type: 'image/svg+xml' });
+        if (!lastShortCode) return;
+        var fullUrl = window.location.origin + '/r/' + lastShortCode;
+        var exportSvg = generateQRCodeSVG(fullUrl, 400, lastCardLabel);
+        var blob = new Blob([exportSvg], { type: 'image/svg+xml;charset=utf-8' });
         var url = URL.createObjectURL(blob);
         var a = document.createElement('a');
         a.href = url;
-        a.download = 'qr-' + lastShortCode + '.svg';
+        var safeLabel = lastCardLabel ? lastCardLabel.replace(/[/\\?%*:|"<>]/g, '_') : ('qr-' + lastShortCode);
+        a.download = safeLabel + '.svg';
         document.body.appendChild(a);
         a.click();
         document.body.removeChild(a);
@@ -1199,23 +1222,31 @@ export function renderAdminHtml(): string {
 
       // Download PNG
       downloadPngBtn.onclick = function() {
-        if (!lastQrSvg) return;
-        var svgBlob = new Blob([lastQrSvg], { type: 'image/svg+xml' });
+        if (!lastShortCode) return;
+        var fullUrl = window.location.origin + '/r/' + lastShortCode;
+        var highResSvg = generateQRCodeSVG(fullUrl, 800, lastCardLabel);
+        var svgBlob = new Blob([highResSvg], { type: 'image/svg+xml;charset=utf-8' });
         var url = URL.createObjectURL(svgBlob);
         var img = new Image();
         img.onload = function() {
+          var width = 800;
+          var height = (img.naturalHeight && img.naturalWidth)
+            ? Math.round(width * (img.naturalHeight / img.naturalWidth))
+            : (img.height || 800);
           var canvas = document.createElement('canvas');
-          canvas.width = 800;
-          canvas.height = 800;
+          canvas.width = width;
+          canvas.height = height;
           var ctx = canvas.getContext('2d');
           ctx.fillStyle = '#ffffff';
-          ctx.fillRect(0, 0, 800, 800);
-          ctx.drawImage(img, 0, 0, 800, 800);
+          ctx.fillRect(0, 0, width, height);
+          ctx.drawImage(img, 0, 0, width, height);
           canvas.toBlob(function(blob) {
+            if (!blob) return;
             var pngUrl = URL.createObjectURL(blob);
             var a = document.createElement('a');
             a.href = pngUrl;
-            a.download = 'qr-' + lastShortCode + '.png';
+            var safeLabel = lastCardLabel ? lastCardLabel.replace(/[/\\?%*:|"<>]/g, '_') : ('qr-' + lastShortCode);
+            a.download = safeLabel + '.png';
             document.body.appendChild(a);
             a.click();
             document.body.removeChild(a);
@@ -1225,6 +1256,13 @@ export function renderAdminHtml(): string {
         };
         img.src = url;
       };
+
+      // Update QR preview dynamically when user edits label input in UPDATE mode
+      cardLabelInput.addEventListener('input', function() {
+        if (currentMode === 'UPDATE' && currentEditingCard) {
+          showQRCode(currentEditingCard.short_code, cardLabelInput.value.trim());
+        }
+      });
 
       // Form Submit (POST vs PATCH)
       form.onsubmit = async function(e) {
@@ -1322,7 +1360,7 @@ export function renderAdminHtml(): string {
           }
 
           // Generate and show QR Code
-          showQRCode(shortCode);
+          showQRCode(shortCode, label);
 
           // Update the list if successful so it reflects new state without reload
           if (currentMode === 'UPDATE') {
