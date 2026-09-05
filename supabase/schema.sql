@@ -75,6 +75,38 @@ CREATE TRIGGER trigger_cards_updated_at
     EXECUTE FUNCTION update_updated_at_column();
 
 -- ===================================================================
+-- 4. ROW LEVEL SECURITY (RLS) POLICIES
+--    Secures the database against unauthorized direct PostgREST calls.
+--    All direct anon access is blocked; full access granted to service_role (Cloudflare Worker).
+-- ===================================================================
+ALTER TABLE users ENABLE ROW LEVEL SECURITY;
+ALTER TABLE cards ENABLE ROW LEVEL SECURITY;
+ALTER TABLE tap_logs ENABLE ROW LEVEL SECURITY;
+
+-- Explicit full access for service_role (defense-in-depth)
+DROP POLICY IF EXISTS "Service role full access to users" ON users;
+CREATE POLICY "Service role full access to users"
+    ON users FOR ALL
+    TO service_role
+    USING (true)
+    WITH CHECK (true);
+
+DROP POLICY IF EXISTS "Service role full access to cards" ON cards;
+CREATE POLICY "Service role full access to cards"
+    ON cards FOR ALL
+    TO service_role
+    USING (true)
+    WITH CHECK (true);
+
+DROP POLICY IF EXISTS "Service role full access to tap_logs" ON tap_logs;
+CREATE POLICY "Service role full access to tap_logs"
+    ON tap_logs FOR ALL
+    TO service_role
+    USING (true)
+    WITH CHECK (true);
+
+
+-- ===================================================================
 -- V3 MIGRATION SCRIPT (Run this if upgrading from V2)
 -- ===================================================================
 -- ALTER TABLE cards ADD COLUMN IF NOT EXISTS nfc_uid VARCHAR(100) UNIQUE;
