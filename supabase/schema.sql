@@ -38,8 +38,9 @@ CREATE INDEX IF NOT EXISTS idx_cards_user_id ON cards(user_id);
 -- Index for filtering active/inactive cards in admin dashboard
 CREATE INDEX IF NOT EXISTS idx_cards_is_active ON cards(is_active);
 
--- Extensions for search
-CREATE EXTENSION IF NOT EXISTS pg_trgm;
+-- Extensions for search (installed in dedicated extensions schema per Supabase guidelines)
+CREATE SCHEMA IF NOT EXISTS extensions;
+CREATE EXTENSION IF NOT EXISTS pg_trgm SCHEMA extensions;
 CREATE INDEX IF NOT EXISTS idx_cards_short_code_trgm ON cards USING gin (short_code gin_trgm_ops);
 CREATE INDEX IF NOT EXISTS idx_cards_nfc_uid_trgm ON cards USING gin (nfc_uid gin_trgm_ops);
 CREATE INDEX IF NOT EXISTS idx_cards_label_trgm ON cards USING gin (label gin_trgm_ops);
@@ -60,13 +61,17 @@ CREATE TABLE IF NOT EXISTS tap_logs (
 CREATE INDEX IF NOT EXISTS idx_tap_logs_card_id_tapped_at ON tap_logs(card_id, tapped_at DESC);
 
 -- Trigger to automatically update `updated_at` column in `cards` table
+-- Added `SET search_path = ''` to prevent mutable search_path warning
 CREATE OR REPLACE FUNCTION update_updated_at_column()
-RETURNS TRIGGER AS $$
+RETURNS TRIGGER 
+LANGUAGE plpgsql
+SET search_path = ''
+AS $$
 BEGIN
     NEW.updated_at = NOW();
     RETURN NEW;
 END;
-$$ language 'plpgsql';
+$$;
 
 DROP TRIGGER IF EXISTS trigger_cards_updated_at ON cards;
 CREATE TRIGGER trigger_cards_updated_at
