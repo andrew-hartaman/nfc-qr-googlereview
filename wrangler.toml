@@ -17,7 +17,13 @@ preview_id = "63cfccd44a05430aaa418a3b4bfedb4c"
 [vars]
 DEFAULT_FALLBACK_URL = "https://google.com"
 
+# Cloudflare Cron Triggers
+# Runs daily at 03:00 UTC (10:00 WIB) to keep Supabase active and prevent 7-day auto-pause
+[triggers]
+crons = ["0 3 * * *"]
+
 # Sensitive secrets should be set using:
 #   npx wrangler secret put SUPABASE_URL
 #   npx wrangler secret put SUPABASE_SERVICE_ROLE_KEY
 #   npx wrangler secret put ADMIN_API_KEY # Optional auth protection for admin endpoints
+

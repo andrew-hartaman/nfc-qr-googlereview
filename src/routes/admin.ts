@@ -541,3 +541,34 @@ adminRouter.get('/api/cards/:identifier/analytics', async (c) => {
     return c.json<ApiResponse>({ success: false, error: message }, 500);
   }
 });
+
+/**
+ * GET /api/system/ping-db
+ * Manual endpoint to test Supabase connection and verify keep-alive status.
+ */
+adminRouter.get('/api/system/ping-db', async (c) => {
+  try {
+    const supabase = getSupabaseClient(c.env);
+    const start = Date.now();
+    const { data, error } = await supabase.from('cards').select('id').limit(1);
+    const duration = Date.now() - start;
+
+    if (error) {
+      return c.json<ApiResponse>({ success: false, error: error.message }, 500);
+    }
+
+    return c.json<ApiResponse>({
+      success: true,
+      data: {
+        message: 'Supabase ping successful (database is active)',
+        duration_ms: duration,
+        timestamp: new Date().toISOString(),
+        rows: data?.length ?? 0,
+      },
+    });
+  } catch (err: unknown) {
+    const message = err instanceof Error ? err.message : 'Unknown error';
+    return c.json<ApiResponse>({ success: false, error: message }, 500);
+  }
+});
+

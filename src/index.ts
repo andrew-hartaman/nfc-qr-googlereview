@@ -4,6 +4,7 @@ import { prettyJSON } from 'hono/pretty-json';
 import type { Bindings, ApiResponse } from './types';
 import { redirectRouter } from './routes/redirect';
 import { adminRouter } from './routes/admin';
+import { getSupabaseClient } from './lib/supabase';
 
 const app = new Hono<{ Bindings: Bindings }>();
 
@@ -55,4 +56,31 @@ app.onError((err, c) => {
   );
 });
 
-export default app;
+export default {
+  fetch: app.fetch,
+  async scheduled(controller: ScheduledController, env: Bindings, ctx: ExecutionContext): Promise<void> {
+    const timestamp = new Date().toISOString();
+    console.log(`[Cron Trigger] Supabase Keep-Alive triggered at ${timestamp} (cron: "${controller.cron}")`);
+
+    ctx.waitUntil(
+      (async () => {
+        try {
+          const supabase = getSupabaseClient(env);
+          const start = Date.now();
+          // Lightweight ping query to reset Supabase 7-day inactivity timer
+          const { data, error } = await supabase.from('cards').select('id').limit(1);
+          const duration = Date.now() - start;
+
+          if (error) {
+            console.error(`[Cron Trigger Error] Supabase ping failed: ${error.message}`);
+          } else {
+            console.log(`[Cron Trigger Success] Supabase kept active (${duration}ms). Rows returned: ${data?.length ?? 0}`);
+          }
+        } catch (err: unknown) {
+          const message = err instanceof Error ? err.message : 'Unknown error';
+          console.error(`[Cron Trigger Error] Supabase ping exception: ${message}`);
+        }
+      })()
+    );
+  },
+};
