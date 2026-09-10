@@ -154,6 +154,69 @@ export function renderAdminHtml(): string {
       box-shadow: 0 4px 16px rgba(56, 189, 248, 0.35);
     }
 
+    .mode-selector {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 10px;
+      margin-bottom: 16px;
+    }
+
+    .mode-option {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      padding: 10px 14px;
+      background: rgba(15, 23, 42, 0.6);
+      border: 1px solid rgba(255, 255, 255, 0.12);
+      border-radius: 10px;
+      cursor: pointer;
+      transition: all 0.2s ease;
+      user-select: none;
+      font-size: 0.84rem;
+      color: var(--text-muted);
+    }
+
+    .mode-option:hover {
+      border-color: rgba(56, 189, 248, 0.4);
+      background: rgba(15, 23, 42, 0.85);
+    }
+
+    .mode-option.active {
+      background: rgba(56, 189, 248, 0.15);
+      border-color: var(--primary);
+      color: var(--text-bright);
+      box-shadow: 0 0 12px rgba(56, 189, 248, 0.2);
+    }
+
+    .mode-option input[type="radio"] {
+      accent-color: var(--primary);
+      width: 16px;
+      height: 16px;
+      margin: 0;
+      cursor: pointer;
+    }
+
+    .helper-link {
+      color: var(--primary);
+      text-decoration: none;
+      display: inline-flex;
+      align-items: center;
+      gap: 4px;
+      font-size: 0.78rem;
+      transition: color 0.2s;
+    }
+
+    .helper-link:hover {
+      color: #7dd3fc;
+      text-decoration: underline;
+    }
+
+    @media (max-width: 480px) {
+      .mode-selector {
+        grid-template-columns: 1fr;
+      }
+    }
+
     .form-group {
       margin-bottom: 18px;
     }
@@ -676,22 +739,61 @@ export function renderAdminHtml(): string {
           <input type="text" id="nfcUid" placeholder="Contoh: 04:A3:2B:1C:5D:6E:7F" autocomplete="off">
         </div>
 
-        <!-- Target URL -->
+        <!-- Target URL Mode Selector -->
         <div class="form-group">
-          <label for="targetUrl">Target Google Review URL <span style="color:var(--text-muted); font-weight:400;">(opsional)</span></label>
-          <input type="url" id="targetUrl" placeholder="https://maps.app.goo.gl/...">
+          <label>Mode Target URL</label>
+          <div class="mode-selector">
+            <label class="mode-option active" id="labelModePlaceId">
+              <input type="radio" name="targetMode" id="modePlaceId" value="PLACE_ID" checked>
+              <span>⭐ Google Review via Place ID</span>
+            </label>
+            <label class="mode-option" id="labelModeCustomUrl">
+              <input type="radio" name="targetMode" id="modeCustomUrl" value="CUSTOM_URL">
+              <span>🔗 Custom URL</span>
+            </label>
+          </div>
         </div>
 
-        <!-- Auto Google Review Parameter Checkbox -->
-        <div class="option-card">
-          <label class="checkbox-group" for="autoReviewParam">
-            <input type="checkbox" id="autoReviewParam" checked>
-            <span>Tambahkan parameter Google Review otomatis</span>
-          </label>
-          <p class="checkbox-hint">💡 Memformat URL agar langsung membuka dialog ulasan.</p>
-          <div id="urlPreviewBox" class="url-preview-tag" style="display: none;">
-            <span class="url-preview-label">URL Tersimpan:</span>
-            <span id="formattedUrlPreview"></span>
+        <!-- Mode 1: Google Review via Place ID (Default) -->
+        <div id="placeIdGroup">
+          <div class="form-group">
+            <label for="placeIdInput">
+              Google Place ID <span style="color:var(--text-muted); font-weight:400;">(opsional)</span>
+            </label>
+            <input type="text" id="placeIdInput" placeholder="ChIJxxxxxxxxxxxx" autocomplete="off">
+            <div style="margin-top: 6px;">
+              <a href="https://developers.google.com/maps/documentation/javascript/examples/places-placeid-finder" target="_blank" rel="noopener noreferrer" class="helper-link">
+                🔍 Cari Place ID di Google Place ID Finder ↗
+              </a>
+            </div>
+          </div>
+
+          <div id="placeIdPreviewCard" class="option-card" style="display: none;">
+            <div style="font-size: 0.8rem; color: var(--text-muted); margin-bottom: 4px;">🔗 Preview URL Google Review:</div>
+            <div class="url-preview-tag" style="margin-left: 0; margin-top: 4px;">
+              <span id="placeIdGeneratedUrl"></span>
+            </div>
+          </div>
+        </div>
+
+        <!-- Mode 2: Custom URL -->
+        <div id="customUrlGroup" style="display: none;">
+          <div class="form-group">
+            <label for="targetUrl">Target URL <span style="color:var(--text-muted); font-weight:400;">(opsional)</span></label>
+            <input type="url" id="targetUrl" placeholder="https://maps.app.goo.gl/... atau https://...">
+          </div>
+
+          <!-- Auto Google Review Parameter Checkbox -->
+          <div class="option-card">
+            <label class="checkbox-group" for="autoReviewParam">
+              <input type="checkbox" id="autoReviewParam" checked>
+              <span>Tambahkan parameter Google Review otomatis</span>
+            </label>
+            <p class="checkbox-hint">💡 Memformat URL agar langsung membuka dialog ulasan.</p>
+            <div id="urlPreviewBox" class="url-preview-tag" style="display: none;">
+              <span class="url-preview-label">URL Tersimpan:</span>
+              <span id="formattedUrlPreview"></span>
+            </div>
           </div>
         </div>
 
@@ -801,6 +903,15 @@ export function renderAdminHtml(): string {
       var fetchCardBtn = document.getElementById('fetchCardBtn');
       var cardLabelInput = document.getElementById('cardLabel');
       var nfcUidInput = document.getElementById('nfcUid');
+      var modePlaceId = document.getElementById('modePlaceId');
+      var modeCustomUrl = document.getElementById('modeCustomUrl');
+      var labelModePlaceId = document.getElementById('labelModePlaceId');
+      var labelModeCustomUrl = document.getElementById('labelModeCustomUrl');
+      var placeIdGroup = document.getElementById('placeIdGroup');
+      var customUrlGroup = document.getElementById('customUrlGroup');
+      var placeIdInput = document.getElementById('placeIdInput');
+      var placeIdPreviewCard = document.getElementById('placeIdPreviewCard');
+      var placeIdGeneratedUrl = document.getElementById('placeIdGeneratedUrl');
       var targetUrlInput = document.getElementById('targetUrl');
       var autoReviewParamInput = document.getElementById('autoReviewParam');
       var urlPreviewBox = document.getElementById('urlPreviewBox');
@@ -827,6 +938,67 @@ export function renderAdminHtml(): string {
           apiKeyInput.value = savedKey;
         }
       } catch (e) {}
+
+      // Mode & Place ID Handlers
+      function formatPlaceIdReviewUrl(placeId) {
+        if (!placeId) return '';
+        var trimmed = placeId.trim();
+        if (!trimmed) return '';
+        var match = trimmed.match(/[?&]placeid=([^&]+)/i);
+        if (match && match[1]) {
+          trimmed = decodeURIComponent(match[1]);
+        }
+        return 'https://search.google.com/local/writereview?placeid=' + encodeURIComponent(trimmed);
+      }
+
+      function updatePlaceIdPreview() {
+        if (!placeIdInput || !placeIdPreviewCard || !placeIdGeneratedUrl) return;
+        var rawVal = (placeIdInput.value || '').trim();
+        if (!rawVal) {
+          placeIdPreviewCard.style.display = 'none';
+          return;
+        }
+        var match = rawVal.match(/[?&]placeid=([^&]+)/i);
+        var cleanPlaceId = match && match[1] ? decodeURIComponent(match[1]) : rawVal;
+        var generatedUrl = formatPlaceIdReviewUrl(cleanPlaceId);
+        placeIdGeneratedUrl.textContent = generatedUrl;
+        placeIdPreviewCard.style.display = 'block';
+      }
+
+      function setTargetMode(mode) {
+        if (!modeCustomUrl || !modePlaceId) return;
+        if (mode === 'CUSTOM_URL') {
+          modeCustomUrl.checked = true;
+          modePlaceId.checked = false;
+          if (labelModeCustomUrl) labelModeCustomUrl.classList.add('active');
+          if (labelModePlaceId) labelModePlaceId.classList.remove('active');
+          if (customUrlGroup) customUrlGroup.style.display = 'block';
+          if (placeIdGroup) placeIdGroup.style.display = 'none';
+          if (typeof updateUrlPreview === 'function') updateUrlPreview();
+        } else {
+          modePlaceId.checked = true;
+          modeCustomUrl.checked = false;
+          if (labelModePlaceId) labelModePlaceId.classList.add('active');
+          if (labelModeCustomUrl) labelModeCustomUrl.classList.remove('active');
+          if (placeIdGroup) placeIdGroup.style.display = 'block';
+          if (customUrlGroup) customUrlGroup.style.display = 'none';
+          updatePlaceIdPreview();
+        }
+      }
+
+      if (modePlaceId) {
+        modePlaceId.addEventListener('change', function() {
+          if (modePlaceId.checked) setTargetMode('PLACE_ID');
+        });
+      }
+      if (modeCustomUrl) {
+        modeCustomUrl.addEventListener('change', function() {
+          if (modeCustomUrl.checked) setTargetMode('CUSTOM_URL');
+        });
+      }
+      if (placeIdInput) {
+        placeIdInput.addEventListener('input', updatePlaceIdPreview);
+      }
 
       // Tab Switch Handler
       function selectTab(mode) {
@@ -865,7 +1037,11 @@ export function renderAdminHtml(): string {
           fetchCardBtn.style.display = 'none';
           cardLabelInput.value = '';
           form.reset();
-          updateUrlPreview();
+          setTargetMode('PLACE_ID');
+          if (placeIdInput) placeIdInput.value = '';
+          if (targetUrlInput) targetUrlInput.value = '';
+          updatePlaceIdPreview();
+          if (typeof updateUrlPreview === 'function') updateUrlPreview();
         } else if (mode === 'UPDATE') {
           // UPDATE is just FORM mode but prefilled
           btnTabList.className = 'tab-btn'; // Not a main tab button, so keep them inactive or keep list active? Keep all inactive is fine, or active list. We'll leave them inactive.
@@ -1019,9 +1195,27 @@ export function renderAdminHtml(): string {
         shortCodeInput.value = card.short_code;
         cardLabelInput.value = card.label || '';
         nfcUidInput.value = card.nfc_uid || '';
-        targetUrlInput.value = card.target_url || '';
         isActiveInput.checked = (card.is_active === true);
         
+        var targetUrl = card.target_url || '';
+        var match = targetUrl.match(/[?&]placeid=([^&]+)/i);
+        if (match && match[1]) {
+          setTargetMode('PLACE_ID');
+          if (placeIdInput) placeIdInput.value = decodeURIComponent(match[1]);
+          if (targetUrlInput) targetUrlInput.value = targetUrl;
+          updatePlaceIdPreview();
+        } else if (targetUrl) {
+          setTargetMode('CUSTOM_URL');
+          if (targetUrlInput) targetUrlInput.value = targetUrl;
+          if (placeIdInput) placeIdInput.value = '';
+          updateUrlPreview();
+        } else {
+          setTargetMode('PLACE_ID');
+          if (placeIdInput) placeIdInput.value = '';
+          if (targetUrlInput) targetUrlInput.value = '';
+          updatePlaceIdPreview();
+        }
+
         if (!card.target_url) {
           assignTitle.style.display = 'block';
           assignTitle.textContent = '✨ Assign URL: /r/' + card.short_code;
@@ -1030,8 +1224,6 @@ export function renderAdminHtml(): string {
           assignTitle.textContent = '✏️ Edit: /r/' + card.short_code;
           assignTitle.style.color = 'var(--text-main)';
         }
-
-        updateUrlPreview();
 
         // Show URL links and QR code immediately so user can view/download without updating first
         var redirectFullUrl = window.location.origin + '/r/' + card.short_code;
@@ -1273,11 +1465,17 @@ export function renderAdminHtml(): string {
         var shortCode = (shortCodeInput.value || '').trim().toLowerCase();
         var label = (cardLabelInput.value || '').trim();
         var nfcUid = (nfcUidInput.value || '').trim().toUpperCase();
-        var rawTargetUrl = (targetUrlInput.value || '').trim();
-        var autoReviewParam = autoReviewParamInput.checked;
         var isActive = isActiveInput.checked;
 
-        var finalTargetUrl = processReviewUrl(rawTargetUrl, autoReviewParam);
+        var finalTargetUrl = '';
+        if (modePlaceId && modePlaceId.checked) {
+          var rawPlaceId = (placeIdInput.value || '').trim();
+          finalTargetUrl = formatPlaceIdReviewUrl(rawPlaceId);
+        } else {
+          var rawTargetUrl = (targetUrlInput.value || '').trim();
+          var autoReviewParam = autoReviewParamInput.checked;
+          finalTargetUrl = processReviewUrl(rawTargetUrl, autoReviewParam);
+        }
 
         if (apiKey) {
           try {
@@ -1302,7 +1500,7 @@ export function renderAdminHtml(): string {
           if (currentMode === 'CREATE') {
             bodyData = {
               short_code: shortCode,
-              target_url: finalTargetUrl,
+              target_url: finalTargetUrl || null,
               is_active: isActive
             };
             if (nfcUid) bodyData.nfc_uid = nfcUid;
@@ -1315,7 +1513,7 @@ export function renderAdminHtml(): string {
             });
           } else {
             bodyData = {
-              target_url: finalTargetUrl,
+              target_url: finalTargetUrl || null,
               is_active: isActive
             };
             // Send nfc_uid even if empty (to allow unlinking)
@@ -1366,7 +1564,7 @@ export function renderAdminHtml(): string {
           if (currentMode === 'UPDATE') {
              var idx = allCards.findIndex(function(c) { return c.short_code === shortCode; });
              if (idx > -1) {
-                allCards[idx].target_url = finalTargetUrl;
+                allCards[idx].target_url = finalTargetUrl || null;
                 allCards[idx].nfc_uid = nfcUid || null;
                 allCards[idx].is_active = (data.data && typeof data.data.is_active === 'boolean') ? data.data.is_active : isActive;
                 allCards[idx].label = label || null;

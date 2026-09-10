@@ -5,7 +5,8 @@ import {
   determineIsActive, 
   parsePaginationParams,
   formatCardLabel,
-  extractMaxSequenceFromLabels
+  extractMaxSequenceFromLabels,
+  formatGoogleReviewUrlFromPlaceId
 } from './logic';
 
 describe('logic utils', () => {
@@ -185,6 +186,40 @@ describe('logic utils', () => {
         'K-1000050-Bulk'
       ];
       expect(extractMaxSequenceFromLabels(labels)).toBe(1000050);
+    });
+  });
+
+  describe('formatGoogleReviewUrlFromPlaceId', () => {
+    it('should format a valid Place ID into a Google Review URL', () => {
+      expect(formatGoogleReviewUrlFromPlaceId('ChIJN1t_tDeuEmsRUsoyG83frY4'))
+        .toBe('https://search.google.com/local/writereview?placeid=ChIJN1t_tDeuEmsRUsoyG83frY4');
+    });
+
+    it('should trim surrounding whitespace from Place ID', () => {
+      expect(formatGoogleReviewUrlFromPlaceId('   ChIJN1t_tDeuEmsRUsoyG83frY4  \n'))
+        .toBe('https://search.google.com/local/writereview?placeid=ChIJN1t_tDeuEmsRUsoyG83frY4');
+    });
+
+    it('should return empty string for empty, null, or whitespace-only input', () => {
+      expect(formatGoogleReviewUrlFromPlaceId('')).toBe('');
+      expect(formatGoogleReviewUrlFromPlaceId('   ')).toBe('');
+      // @ts-expect-error testing falsy inputs
+      expect(formatGoogleReviewUrlFromPlaceId(null)).toBe('');
+      // @ts-expect-error testing falsy inputs
+      expect(formatGoogleReviewUrlFromPlaceId(undefined)).toBe('');
+    });
+
+    it('should extract Place ID if user accidentally pastes a full URL containing placeid parameter', () => {
+      expect(formatGoogleReviewUrlFromPlaceId('https://search.google.com/local/writereview?placeid=ChIJN1t_tDeuEmsRUsoyG83frY4'))
+        .toBe('https://search.google.com/local/writereview?placeid=ChIJN1t_tDeuEmsRUsoyG83frY4');
+      
+      expect(formatGoogleReviewUrlFromPlaceId('https://maps.google.com/?placeid=ChIJabc123&foo=bar'))
+        .toBe('https://search.google.com/local/writereview?placeid=ChIJabc123');
+    });
+
+    it('should URI encode special characters in Place ID', () => {
+      expect(formatGoogleReviewUrlFromPlaceId('ChIJ+test/abc=='))
+        .toBe('https://search.google.com/local/writereview?placeid=ChIJ%2Btest%2Fabc%3D%3D');
     });
   });
 });

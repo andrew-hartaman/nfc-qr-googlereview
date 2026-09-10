@@ -104,3 +104,20 @@ export function extractMaxSequenceFromLabels(labels: (string | null | undefined)
   }
   return maxSeq;
 }
+
+/**
+ * Formats a Google Place ID into a direct write-review URL.
+ * Example: 'ChIJN1t_tDeuEmsRUsoyG83frY4' -> 'https://search.google.com/local/writereview?placeid=ChIJN1t_tDeuEmsRUsoyG83frY4'
+ * Also handles users pasting a full URL containing placeid= parameter.
+ */
+export function formatGoogleReviewUrlFromPlaceId(placeId: string): string {
+  if (!placeId) return '';
+  let trimmed = placeId.trim();
+  if (!trimmed) return '';
+  const match = trimmed.match(/[?&]placeid=([^&]+)/i);
+  if (match && match[1]) {
+    trimmed = decodeURIComponent(match[1]);
+  }
+  return `https://search.google.com/local/writereview?placeid=${encodeURIComponent(trimmed)}`;
+}
+
